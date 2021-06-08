@@ -48,26 +48,18 @@ feed = foldl' (((relu <$>) .) . zLayer)
 -- xs: vector of inputs
 -- Returns a list of (weighted inputs, activations) of each layer,
 -- from last layer to first.
--- revaz
---   :: Foldable t => [Double] -> t ([Double], [[Double]]) -> ([[Double]], [[Double]])
-revaz xs = foldl' f (V.singleton xs, V.empty)
+revaz :: Vector Double -> Vector (Vector Double, Vector (Vector Double)) -> (Vector (Vector Double), Vector (Vector Double))
+revaz xs = V.foldl' f (V.singleton xs, V.empty)
   where
-    f (avs, zs) (bs, wms) =
-      let zs' = zLayer av (bs, wms) in (V.cons (relu <$> zs') avs, V.cons zs' zs)
+    f (avs, zs) (bs, wms) = (V.cons (relu <$> zs') avs, V.cons zs' zs)
       where
+        zs' = zLayer av (bs, wms)
         av = V.head avs
 
 dCost :: (Num p, Ord p) => p -> p -> p
 dCost a y | y == 1 && a >= y = 0
           | otherwise      = a - y
 
-revaz'
-  :: Foldable t => [Double] -> t ([Double], [[Double]]) -> ([[Double]], [[Double]])
-revaz' xs = foldl'
-  (\(avs@(av : _), zs) (bs, wms) ->
-    let zs' = V.toList $ zLayer (V.fromList av) (V.fromList bs, V.fromList <$> V.fromList wms) in ((relu <$> zs') : avs, zs' : zs)
-  )
-  ([xs], [])
 
 vtranspose :: Vector (Vector a) -> Vector (Vector a)
 vtranspose (V.uncons -> Nothing) = V.empty
@@ -78,15 +70,13 @@ vtranspose v = ((V.fromList <$>) . V.fromList) . transpose . ((V.toList <$>) . V
 -- yv: vector of desired outputs
 -- Returns list of (activations, deltas) of each layer in order.
 deltas :: Vector Double -> Vector Double -> NeuralNet -> (Vector (Vector Double), Vector (Vector Double))
-deltas xv yv vlayers =
-  let (avs@(V.uncons -> Just (av, _)), V.uncons -> Just (zv, zvs)) = revaz xv vlayers
-      delta0 = V.zipWith (*) (V.zipWith dCost av yv) (relu' <$> zv)
-  in  (V.reverse avs, f (vtranspose . snd <$> V.reverse vlayers) zvs (V.singleton delta0)) where
-  f _          (V.uncons -> Nothing)         dvs          = dvs
-  f (V.uncons -> Just (wm, wms)) (V.uncons -> Just (zv, zvs)) dvs@(V.uncons -> Just (dv, _)) = f wms zvs $ (`V.cons` dvs) $ V.zipWith
-    (*)
-    ((\row -> V.sum $ V.zipWith (*) row dv) <$> wm )
-    (relu' <$> zv)
+deltas xv yv vlayers = (V.reverse avs, f (vtranspose . snd <$> V.reverse vlayers) zvs (V.singleton delta0))
+  where
+  (avs@(V.uncons -> Just (av, _)), V.uncons -> Just (zv, zvs)) = revaz xv vlayers
+  delta0 = V.zipWith (*) (V.zipWith dCost av yv) (relu' <$> zv)
+  f _ (V.uncons -> Nothing) dvs = dvs
+  f (V.uncons -> Just (wm, wms)) (V.uncons -> Just (zv, zvs)) dvs@(V.uncons -> Just (dv, _)) =
+    f wms zvs $ (`V.cons` dvs) $ V.zipWith (*) ((\row -> V.sum $ V.zipWith (*) row dv) <$> wm) (relu' <$> zv)
 
 eta :: Double
 eta = 0.002
@@ -95,13 +85,11 @@ descend :: Vector Double -> Vector Double -> Vector Double
 descend av dv = V.zipWith (-) av ((eta *) <$> dv)
 
 learn :: Vector Double -> Vector Double -> NeuralNet -> NeuralNet
-learn xv yv layers =
-  let (avs, dvs) = deltas xv yv layers
-  in  V.zip (V.zipWith descend (fst <$> layers) (dvs)) $ V.zipWith3
-        (\wvs av dv -> V.zipWith (\wv d -> descend wv ((d *) <$> av)) wvs dv)
-        (snd <$> layers)
-        (avs)
-        (dvs)
+learn xv yv layers = V.zip (V.zipWith descend aa dvs) (V.zipWith3 f bb avs dvs)
+  where
+    (aa, bb) = V.unzip layers
+    f wvs av dv = V.zipWith (\wv d -> descend wv ((d *) <$> av)) wvs dv
+    (avs, dvs) = deltas xv yv layers
 
 getImage :: Num b => BS.ByteString -> Int64 -> Vector b
 getImage s n =
