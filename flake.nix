@@ -35,9 +35,9 @@
           stdenv.mkDerivation {
             name = "morans";
             src = ./.;
-            nativeBuildInputs = [ (haskellPackages.ghcWithPackages (h: [ h.zlib h.random ])) ];
+            nativeBuildInputs = [ (haskellPackages.ghcWithPackages (h: [ h.zlib h.random h.vector ])) ];
             buildPhase = ''
-              ghc -O3 morans.hs -o morans
+              ghc -O2 morans.hs -o morans
             '';
             installPhase = ''
               mkdir -p $out
