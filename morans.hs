@@ -70,55 +70,48 @@ revaz' xs = foldl'
   ([xs], [])
 
 
+vheads = V.mapMaybe (fmap fst . V.uncons)
+vtails = V.mapMaybe (fmap snd . V.uncons)
+vtranspose :: Vector (Vector a) -> Vector (Vector a)
+vtranspose (V.uncons -> Nothing) = V.empty
+vtranspose (V.uncons -> Just (V.uncons -> Nothing, xss)) = vtranspose xss
+vtranspose (V.uncons -> Just (V.uncons -> Just (x,xs), xss)) = V.cons (V.cons x (vheads xss)) (vtranspose (V.cons xs (vtails xss)))
+
 -- xv: vector of inputs
 -- yv: vector of desired outputs
 -- Returns list of (activations, deltas) of each layer in order.
--- deltas' :: [Float] -> [Float] -> NeuralNet -> ([[Float]], [[Float]])
-deltas' xv yv layers =
-  let (avs@(av : _), zv : zvs) = revaz' xv layers
-      delta0 = zipWith (*) (zipWith dCost av yv) (relu' <$> zv)
-  in  (reverse avs, f (transpose . snd <$> reverse layers) zvs [delta0]) where
-  f _          []         dvs          = dvs
-  f (wm : wms) (zv : zvs) dvs@(dv : _) = f wms zvs $ (: dvs) $ zipWith
+deltas :: Vector Float -> Vector Float -> NeuralNet -> (Vector (Vector Float), Vector (Vector Float))
+deltas xv yv vlayers =
+  let (avs@(V.uncons -> Just (av, _)), V.uncons -> Just (zv, zvs)) = revaz xv vlayers
+      delta0 = V.zipWith (*) (V.zipWith dCost av yv) (relu' <$> zv)
+  in  (V.reverse avs, f (vtranspose . snd <$> V.reverse vlayers) zvs (V.singleton delta0)) where
+  f _          (V.uncons -> Nothing)         dvs          = dvs
+  f (V.uncons -> Just (wm, wms)) (V.uncons -> Just (zv, zvs)) dvs@(V.uncons -> Just (dv, _)) = f wms zvs $ (`V.cons` dvs) $ V.zipWith
     (*)
-    [ sum $ zipWith (*) row dv | row <- wm ]
+    ((\row -> V.sum $ V.zipWith (*) row dv) <$> wm )
     (relu' <$> zv)
-
--- deltas :: [Float] -> [Float] -> NeuralNet -> ([[Float]], [[Float]])
-deltas xv yv layers = deltas' (V.toList xv) (V.toList yv) layers'
-  where
-    layers' = (\(a,b) -> (V.toList a, V.toList <$> V.toList b)) <$> V.toList layers
-  -- let (avs@(av : _), zv : zvs) = revaz xv layers
-  --     delta0 = zipWith (*) (zipWith dCost av yv) (relu' <$> zv)
-  -- in  (reverse avs, f (transpose . snd <$> reverse layers) zvs [delta0]) where
-  -- f _          []         dvs          = dvs
-  -- f (wm : wms) (zv : zvs) dvs@(dv : _) = f wms zvs $ (: dvs) $ zipWith
-  --   (*)
-  --   [ V.sum $ V.zipWith (*) row dv | row <- wm ]
-  --   (relu' <$> zv)
-
 
 eta :: Float
 eta = 0.002
 
--- descend :: [Float] -> [Float] -> [Float]
+descend :: Vector Float -> Vector Float -> Vector Float
 descend av dv = V.zipWith (-) av ((eta *) <$> dv)
 
--- learn :: [Float] -> [Float] -> NeuralNet -> NeuralNet
+learn :: Vector Float -> Vector Float -> NeuralNet -> NeuralNet
 learn xv yv layers =
   let (avs, dvs) = deltas xv yv layers
-  in  V.zip (V.zipWith descend (fst <$> layers) (V.fromList <$> V.fromList dvs)) $ V.zipWith3
+  in  V.zip (V.zipWith descend (fst <$> layers) (dvs)) $ V.zipWith3
         (\wvs av dv -> V.zipWith (\wv d -> descend wv ((d *) <$> av)) wvs dv)
         (snd <$> layers)
-        (V.fromList <$> V.fromList avs)
-        (V.fromList <$> V.fromList dvs)
+        (avs)
+        (dvs)
 
-getImage :: Num b => BS.ByteString -> Int64 -> [b]
+getImage :: Num b => BS.ByteString -> Int64 -> Vector b
 getImage s n =
-  fromIntegral . BS.index s . (n * 28 * 28 + 16 +) <$> [0 .. 28 * 28 - 1]
+  fromIntegral . BS.index s . (n * 28 * 28 + 16 +) <$> (V.fromList [0 .. 28 * 28 - 1])
 
 -- getX :: Fractional b => BS.ByteString -> Int64 -> [b]
-getX s n = V.fromList ((/ 256) <$> getImage s n)
+getX s n = ((/ 256) <$> getImage s n)
 
 getLabel :: Num b => BS.ByteString -> Int64 -> b
 getLabel s n = fromIntegral $ BS.index s (n + 8)
@@ -155,8 +148,7 @@ main = do
         _         -> (putStr, putStrLn)
 
   n <- (`mod` 10000) <$> randomIO
-  pStr . unlines $ take 28 $ take 28 <$> iterate (drop 28)
-                                                 (render <$> getImage testI n)
+  pStr . unlines $ take 28 $ take 28 <$> iterate (drop 28) (V.toList (render <$> getImage testI n))
 
   b <- newBrain (V.fromList [784, 30, 10])
   let example = getX testI n
