@@ -48,9 +48,7 @@
               cp ${t10k-labels-idx1-ubyte} $out/t10k-labels-idx1-ubyte.gz
             '';
           };
-        devShell = mkShell {
-          buildInputs = [ (haskellPackages.ghcWithPackages (h: [ h.zlib h.random ])) ];
-        };
+        devShell = import ./shell.nix { inherit pkgs; };
       }
     );
 }
