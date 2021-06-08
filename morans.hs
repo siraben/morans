@@ -16,11 +16,11 @@ import           Data.Foldable                  ( for_ )
 import qualified Data.Vector as V
 import Data.Vector (Vector)
 
-type Biases = Vector Float
-type Weights = Vector (Vector Float)
+type Biases = Vector Double
+type Weights = Vector (Vector Double)
 type NeuralNet = Vector (Biases, Weights)
 
-gauss :: Float -> IO Float
+gauss :: Double -> IO Double
 gauss scale = do
   x1 <- randomIO
   x2 <- randomIO
@@ -31,7 +31,7 @@ newBrain szs@(V.uncons -> Just (_ , ts)) = V.zip (flip V.replicate 1 <$> ts)
     <$> V.zipWithM (\m n -> V.replicateM n $ V.replicateM m $ gauss 0.01) szs ts
 
 -- activation function
-relu :: Float -> Float
+relu :: Double -> Double
 relu = max 0
 
 -- derivative of activation function
@@ -39,17 +39,17 @@ relu' :: (Ord a, Num a, Num p) => a -> p
 relu' x | x < 0     = 0
         | otherwise = 1
 
-zLayer :: Vector Float -> (Vector Float, Vector (Vector Float)) -> Vector Float
+zLayer :: Vector Double -> (Vector Double, Vector (Vector Double)) -> Vector Double
 zLayer as (bs, wvs) = V.zipWith (+) bs $ V.sum . V.zipWith (*) as <$> wvs
 
-feed :: Vector Float -> NeuralNet -> Vector Float
+feed :: Vector Double -> NeuralNet -> Vector Double
 feed = foldl' (((relu <$>) .) . zLayer)
 
 -- xs: vector of inputs
 -- Returns a list of (weighted inputs, activations) of each layer,
 -- from last layer to first.
 -- revaz
---   :: Foldable t => [Float] -> t ([Float], [[Float]]) -> ([[Float]], [[Float]])
+--   :: Foldable t => [Double] -> t ([Double], [[Double]]) -> ([[Double]], [[Double]])
 revaz xs = foldl' f (V.singleton xs, V.empty)
   where
     f (avs, zs) (bs, wms) =
@@ -59,28 +59,25 @@ revaz xs = foldl' f (V.singleton xs, V.empty)
 
 dCost :: (Num p, Ord p) => p -> p -> p
 dCost a y | y == 1 && a >= y = 0
-          | otherwise        = a - y
+          | otherwise      = a - y
 
 revaz'
-  :: Foldable t => [Float] -> t ([Float], [[Float]]) -> ([[Float]], [[Float]])
+  :: Foldable t => [Double] -> t ([Double], [[Double]]) -> ([[Double]], [[Double]])
 revaz' xs = foldl'
   (\(avs@(av : _), zs) (bs, wms) ->
     let zs' = V.toList $ zLayer (V.fromList av) (V.fromList bs, V.fromList <$> V.fromList wms) in ((relu <$> zs') : avs, zs' : zs)
   )
   ([xs], [])
 
-
-vheads = V.mapMaybe (fmap fst . V.uncons)
-vtails = V.mapMaybe (fmap snd . V.uncons)
 vtranspose :: Vector (Vector a) -> Vector (Vector a)
 vtranspose (V.uncons -> Nothing) = V.empty
 vtranspose (V.uncons -> Just (V.uncons -> Nothing, xss)) = vtranspose xss
-vtranspose (V.uncons -> Just (V.uncons -> Just (x,xs), xss)) = V.cons (V.cons x (vheads xss)) (vtranspose (V.cons xs (vtails xss)))
+vtranspose v = ((V.fromList <$>) . V.fromList) . transpose . ((V.toList <$>) . V.toList) $ v
 
 -- xv: vector of inputs
 -- yv: vector of desired outputs
 -- Returns list of (activations, deltas) of each layer in order.
-deltas :: Vector Float -> Vector Float -> NeuralNet -> (Vector (Vector Float), Vector (Vector Float))
+deltas :: Vector Double -> Vector Double -> NeuralNet -> (Vector (Vector Double), Vector (Vector Double))
 deltas xv yv vlayers =
   let (avs@(V.uncons -> Just (av, _)), V.uncons -> Just (zv, zvs)) = revaz xv vlayers
       delta0 = V.zipWith (*) (V.zipWith dCost av yv) (relu' <$> zv)
@@ -91,13 +88,13 @@ deltas xv yv vlayers =
     ((\row -> V.sum $ V.zipWith (*) row dv) <$> wm )
     (relu' <$> zv)
 
-eta :: Float
+eta :: Double
 eta = 0.002
 
-descend :: Vector Float -> Vector Float -> Vector Float
+descend :: Vector Double -> Vector Double -> Vector Double
 descend av dv = V.zipWith (-) av ((eta *) <$> dv)
 
-learn :: Vector Float -> Vector Float -> NeuralNet -> NeuralNet
+learn :: Vector Double -> Vector Double -> NeuralNet -> NeuralNet
 learn xv yv layers =
   let (avs, dvs) = deltas xv yv layers
   in  V.zip (V.zipWith descend (fst <$> layers) (dvs)) $ V.zipWith3
@@ -152,7 +149,7 @@ main = do
 
   b <- newBrain (V.fromList [784, 30, 10])
   let example = getX testI n
-      bs = V.scanl (V.foldl' (\b n -> learn (getX trainI n) (getY trainL n) b))
+      bs = V.scanl' (V.foldl' (\b n -> learn (getX trainI n) (getY trainL n) b))
                  b
                  (V.fromList (V.fromList <$> [[0 .. 999], [1000 .. 2999], [3000 .. 5999], [6000 .. 9999]]))
       smart = V.last bs
