@@ -40,12 +40,12 @@
               ghc -O2 morans.hs -o morans
             '';
             installPhase = ''
-              mkdir -p $out
-              cp morans $out
-              cp ${train-images-idx3-ubyte} $out/train-images-idx3-ubyte.gz
-              cp ${train-labels-idx1-ubyte} $out/train-labels-idx1-ubyte.gz
-              cp ${t10k-images-idx3-ubyte} $out/t10k-images-idx3-ubyte.gz
-              cp ${t10k-labels-idx1-ubyte} $out/t10k-labels-idx1-ubyte.gz
+              mkdir -p $out/share $out/bin
+              cp morans $out/bin
+              cp ${train-images-idx3-ubyte} $out/bin/train-images-idx3-ubyte.gz
+              cp ${train-labels-idx1-ubyte} $out/bin/train-labels-idx1-ubyte.gz
+              cp ${t10k-images-idx3-ubyte} $out/bin/t10k-images-idx3-ubyte.gz
+              cp ${t10k-labels-idx1-ubyte} $out/bin/t10k-labels-idx1-ubyte.gz
             '';
           };
         devShell = import ./shell.nix { inherit pkgs; };

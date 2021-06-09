@@ -64,7 +64,7 @@ dCost a y | y == 1 && a >= y = 0
 vtranspose :: Vector (Vector a) -> Vector (Vector a)
 vtranspose (V.uncons -> Nothing) = V.empty
 vtranspose (V.uncons -> Just (V.uncons -> Nothing, xss)) = vtranspose xss
-vtranspose v = ((V.fromList <$>) . V.fromList) . transpose . ((V.toList <$>) . V.toList) $ v
+vtranspose v = ((V.fromList <$>) . V.fromList) . transpose . (V.toList <$>) . V.toList $ v
 
 -- xv: vector of inputs
 -- yv: vector of desired outputs
@@ -93,10 +93,10 @@ learn xv yv layers = V.zip (V.zipWith descend aa dvs) (V.zipWith3 f bb avs dvs)
 
 getImage :: Num b => BS.ByteString -> Int64 -> Vector b
 getImage s n =
-  fromIntegral . BS.index s . (n * 28 * 28 + 16 +) <$> (V.fromList [0 .. 28 * 28 - 1])
+  fromIntegral . BS.index s . (n * 28 * 28 + 16 +) <$> V.fromList [0 .. 28 * 28 - 1]
 
 -- getX :: Fractional b => BS.ByteString -> Int64 -> [b]
-getX s n = ((/ 256) <$> getImage s n)
+getX s n = (/ 256) <$> getImage s n
 
 getLabel :: Num b => BS.ByteString -> Int64 -> b
 getLabel s n = fromIntegral $ BS.index s (n + 8)
@@ -110,7 +110,7 @@ render n = let s = " .:oO@" in s !! (fromIntegral n * length s `div` 256)
 main :: IO ()
 main = do
   as                             <- getArgs
-  ([trainI, trainL, testI, testL]) <- mapM
+  [trainI, trainL, testI, testL] <- mapM
     ((decompress <$>) . BS.readFile)
     [ "train-images-idx3-ubyte.gz" :: FilePath
     , "train-labels-idx1-ubyte.gz"
@@ -120,7 +120,7 @@ main = do
 
   when (as == ["samplesjs"]) $ do
     putStr $ unlines
-      [ "var samples = " ++ show (show . getImage testI <$> (V.fromList [0 .. 49])) ++ ";"
+      [ "var samples = " ++ show (show . getImage testI <$> V.fromList [0 .. 49]) ++ ";"
       , "function random_sample() {"
       , "  return samples[Math.floor(Math.random() * samples.length)];"
       , "}"
@@ -148,8 +148,8 @@ main = do
 
   pStrLn $ "best guess: " ++ show (bestOf $ V.toList (feed example smart))
 
-  let guesses = bestOf . V.toList . (\n -> feed (getX testI n) smart) <$> (V.fromList [0 .. 9999])
-  let answers = getLabel testL <$> (V.fromList [0 .. 9999])
+  let guesses = bestOf . V.toList . (\n -> feed (getX testI n) smart) <$> V.fromList [0 .. 9999]
+  let answers = getLabel testL <$> V.fromList [0 .. 9999]
   pStrLn $ show (sum $ fromEnum <$> V.zipWith (==) guesses answers) ++ " / 10000"
 
   case as of
